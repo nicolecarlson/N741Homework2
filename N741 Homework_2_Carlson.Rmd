@@ -1,0 +1,173 @@
+---
+title: "Homework_2_CARLSON"
+author: "Nicole Carlson"
+date: "February 19, 2018"
+output:
+  word_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(warning = FALSE)
+knitr::opts_chunk$set(message = FALSE)
+```
+For this homework, as with all of my work in R, I will first run the fix for my virus software
+trace (utils:::unpackPkgZip, edit=TRUE).  Then change it to have a longer lag time (2s). 
+
+For the HW2, I will see what is running in my local environment, then add the packages I will need for this HW.  I was unable to load the 'dependences=TRUE' argument for car and quantreg, so I loaded them as I would normally.
+```{r load packages}
+library(tidyverse)
+library(ggplot2)
+library(quantreg)
+library(car)
+sessionInfo()
+```
+ 
+##Question 1.  What kind of R object is the Davis dataset?
+I need to load data Davis into my working environment from the car package.
+```{r Question 1}
+data(Davis, package="car")
+```
+First, I'll run a few commands to see this dataset.
+```{r data initial look}
+head(Davis)
+summary(Davis)
+```
+To get the type of R object, I run the class function.  I see from this operation that Davis is a data frame in R.
+```{r}
+class(Davis)
+```
+##Question 2:  How many observations are in the Davis dataset?
+To answer this question, I can run the str function--it will give me the basic details of the data frame. I see from this output that Davis has 200 observations.
+```{r Question 2}
+str(Davis)
+```
+##Question 3:  For reported weight, how many observations have a missing value?
+To answer this question, I will run a summary for the variable for reported weight, repwt.  I see from this report that there are 17 NAs on the variable repwt in the Davis data frame.
+```{r}
+Davis %>%
+  select(repwt) %>%
+  summary()
+```
+##Question 4: How many observations have no missing values? (HINT: find complete cases)
+To answer this question, I will create a table showing the tally of complete cases (TRUE). There are 181 complete cases in the Davis dataset.  
+```{r Question 4}
+completeDavis <- complete.cases(Davis)
+table(completeDavis)
+```
+
+##Question 5: How many females are in this subset (create a subset containing only females)
+To answer this question, I use dplyr to link my commands that R first create a new dataset, femaleDavis, with only female participants.  Then, I use the summary and dim commands to show details of this new dataset.  The dim command shows the number of rows and columns for the new, female-only dataset. Therefore, the number of rows=number of females in the original Davis datset=112.
+```{r Question 5}
+femaleDavis <- Davis %>%
+filter(sex == "F")
+summary(femaleDavis)
+dim(femaleDavis)
+```
+##Question 6:  What is the average BMI for these individuals?
+I will go ahead and get rid of incomplete cases in this dataset before I proceed with the next questions involving BMI calculations.
+```{r Question 6}
+dataDavisComplete <- Davis %>%
+  na.omit()
+```
+Now, I will create a new variable, BMI, that uses existing variables of weight and height to calculate BMI. 
+```{r}
+dataDavisComplete <- dataDavisComplete %>%
+  mutate(BMI = ((weight)/((height/100)^2)))
+summary(dataDavisComplete)
+```
+It looks like I've got an outlier BMI at 500.  I'll run a quick histogram to take a look:
+```{r}
+ggplot(data=dataDavisComplete) + 
+  geom_histogram(aes(BMI))
+```
+I can see on this histogram that I likely have an outlier that would need to be removed fromt the dataset in order for the average BMI to be correct.
+```{r}
+dataDavisComplete %>%
+  arrange(desc(BMI)) %>%
+  head()
+```
+By running the arrange function, I can see that I do have one outlier on BMI--a woman who has a reported height of 163cm, but a recorded height of 57cm.  Likely a typo in the data entry, but for the purposes of calculating the mean BMI as recorded, I will create a new dataset with this outlier deleted:
+```{r}
+dataDavisNoOutComplete <- dataDavisComplete %>%
+  filter(BMI < 500)
+dim(dataDavisNoOutComplete)
+dim(dataDavisComplete)
+```
+We can now see that the new dataset, dataDavisNoOutComplete, has one less female, and has one less row.  Now, we can ask the question of the mean BMI for all individuals in the Davis men and female, with outliers and incomplete cases removed.  The mean = `r mean(dataDavisNoOutComplete[, "BMI"])`
+
+##Question 7: How do these individuals fall into the BMI categories (what are the frequencies and relative %’s)?
+For this question, I will recode the data frame using the mutate function in dplyr to create BMI categories:
+```{r Question 7}
+dataDavisNoOutComplete <- dataDavisNoOutComplete %>%
+  mutate(BMIcat = cut(BMI, breaks=c(-Inf, 18.5, 25, 30, Inf), labels=c("Underweight","Normal","Overweight", "Obese")))
+ library(janitor) 
+dataDavisNoOutComplete %>%
+  janitor::tabyl(BMIcat) %>%
+  knitr::kable()
+```
+
+##Question 8: Create a histogram of BMI.
+```{r Question 8}
+dataDavisNoOutComplete %>%
+  ggplot() +
+  geom_histogram(aes(BMI))
+```
+What do you notice about the distribution (any outliers or skewness)?
+I notice one outlier, at BMI of around 37.
+
+```{r}
+dataDavisNoOutComplete %>%
+  ggplot() +
+  geom_histogram(aes(BMI)) +
+  facet_grid(. ~ sex)
+```
+Now that I can see the plots side by side, I can tell that the questionable outlier is a male, with BMI of around 37.  There are a few women with BMIs that are higher than most other females, as well.  Are any of these cases an extreme outlier, thereby needing to be removed from the dataset? Let's look at the side-by-side boxplots to see...
+
+##Question 9: Create side-by-side boxplots of the BMI distributions by gender
+```{r Question 9}
+dataDavisNoOutComplete %>%
+  ggplot() +
+  aes(x=sex, y=BMI) +
+geom_boxplot()
+```
+Looks like there is an extreme outlier male BMI (>Q3+1.5IQR).
+I'll check for outliers (using code I got from this [site](https://www.packtpub.com/mapt/book/big_data_and_business_intelligence/9781784391034/2/ch02lvl1sec22/detecting-and-removing-outliers)) with the following code, remove them, then re-plot the boxplots:
+```{r}
+quantiles <- quantile(dataDavisNoOutComplete$BMI, probs = c(.25, .75))
+range <- 1.5 * IQR(dataDavisNoOutComplete$BMI)
+normal_Diane <- subset(dataDavisNoOutComplete,
+dataDavisNoOutComplete$BMI > (quantiles[1] - range) & dataDavisNoOutComplete$BMI < (quantiles[2] + range))
+normal_Diane %>%
+  ggplot() +
+  aes(x=sex, y=BMI) +
+geom_boxplot()
+```
+
+##Question 10: Create a clustered bar chart of the BMI categories by gender
+```{r Question 10}
+normal_Diane %>%
+  filter(!is.na(BMI)) %>%
+  ggplot() +
+  aes(x=BMIcat, fill=sex) +
+geom_bar(position = "dodge")
+```
+I don't understand why this bar graph does not show all of the BMI categories I created earlier.  To check to make sure that I still have them, I will re-run the table:
+```{r}
+normal_Diane %>%
+  janitor::tabyl(BMIcat) %>%
+  knitr::kable()
+```
+
+
+I understand.  By getting rid of the outliers on BMI, I deleted the 3 cases who had obese BMI in this dataset. Since the obese category was 0, there was no bar plotted.  
+In real life, I probably would have kept these higher BMI cases unless they would have made some of my planned analyses impossible.
+
+The git hub repository for this Homework 2 can be found at:https://github.com/nicolecarlson/N741Homework2
+
+
+
+
+
+
